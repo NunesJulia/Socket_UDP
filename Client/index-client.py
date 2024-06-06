@@ -1,44 +1,32 @@
+import random
 import threading
 import socket
 
+client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+client.bind(("localhost", random.randint(8000, 9000)))
+porta = 7777
+name = ""
 
-def main():
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    try:
-        client.connect(('localhost', 7777))
-    except:
-        return print('\nNão foi possívvel se conectar ao servidor!\n')
-
-    username = input('Usuário> ')
-    print('\nConectado')
-
-    thread1 = threading.Thread(target=receiveMessages, args=[client])
-    thread2 = threading.Thread(target=sendMessages, args=[client, username])
-
-    thread1.start()
-    thread2.start()
-
-
-def receiveMessages(client):
+def receive():
     while True:
         try:
-            msg = client.recv(2048).decode('utf-8')
-            print(msg + '\n')
-        except:
-            print('\nNão foi possível permanecer conectado no servidor!\n')
-            print('Pressione <Enter> Para continuar...')
-            client.close()
-            break
+            message, addr = client.recvfrom(1024)
+            print(message.decode())
+        except Exception as e:
+            print(f"Error receiving message: {e}")
 
+thread1 = threading.Thread(target=receive)
+thread1.start()
 
-def sendMessages(client, username):
-    while True:
-        try:
-            msg = input('\n')
-            client.send(f'<{username}> {msg}'.encode('utf-8'))
-        except:
-            return
-
-
-main()
+while True:
+    message = input("")
+    if "toctoc" in message:
+        name = input("Usuário: ")
+        client.sendto(f"SIGNUP_TAG:{name}".encode(), ("localhost", 7777))
+    elif message == "bye":
+        exit()
+    else:
+        if name:
+            client.sendto(f"<{client.getsockname()[0]}>:<{client.getsockname()[1]}>/~{name}:{message}".encode(), ("localhost", 7777))
+        else:
+            print("Você precisa fazer login com 'toctoc' antes de enviar mensagens.")
