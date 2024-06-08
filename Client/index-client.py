@@ -1,44 +1,48 @@
+import random
 import threading
 import socket
+from datetime import datetime
+
+client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # Inicialização do Cliente
+client.bind(("localhost", random.randint(8000, 9000)))
+
+username = ""
 
 
-def main():
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    try:
-        client.connect(('localhost', 7777))
-    except:
-        return print('\nNão foi possívvel se conectar ao servidor!\n')
-
-    username = input('Usuário> ')
-    print('\nConectado')
-
-    thread1 = threading.Thread(target=receiveMessages, args=[client])
-    thread2 = threading.Thread(target=sendMessages, args=[client, username])
-
-    thread1.start()
-    thread2.start()
-
-
-def receiveMessages(client):
+# Função que Recebe as mensagens
+def receive():
     while True:
         try:
-            msg = client.recv(2048).decode('utf-8')
-            print(msg + '\n')
-        except:
-            print('\nNão foi possível permanecer conectado no servidor!\n')
-            print('Pressione <Enter> Para continuar...')
-            client.close()
-            break
+            message, addr = client.recvfrom(1024)
+            print(message.decode())
+        except Exception as e:
+            print(f"Error receiving message: {e}")
 
 
-def sendMessages(client, username):
-    while True:
-        try:
-            msg = input('\n')
-            client.send(f'<{username}> {msg}'.encode('utf-8'))
-        except:
-            return
+thread1 = threading.Thread(target=receive)
+thread1.start()
 
+# Codigo que envia Mensagens
+while True:
+    message = input("")
 
-main()
+    # Inicializa o usuario e sai caso o usuario digite "bye"
+    if message.startswith("hi, meu nome eh") or message.startswith("Hi, meu nome eh"):
+        username = message[
+                   len("hi meu nome eh") + 1:].strip()  # Função que separa o "hi meu nome eh do nome de usuario escrito"
+        client.sendto(f"SIGNUP_TAG:{username}".encode(), ("localhost", 7777))
+
+    elif username and message == "bye":
+        client.sendto(f"SIGNOUT_TAG:{username}".encode(), ("localhost", 7777))
+        print("Conexão encerrada, Até logo!")
+        exit()
+
+    # Envia a mensagem caso o usuario já esteja conectado
+    else:
+        if username:
+            timestamp = datetime.now().strftime('%H:%M:%S - %d/%m/%Y')
+            formatted_message = f"{client.getsockname()[0]}:{client.getsockname()[1]}/~{username}: {message} {timestamp}"
+
+            client.sendto(formatted_message.encode(), ("localhost", 7777))  # Envia a mensagem ao servidor
+        else:
+            print("Para conectar a sala digite 'hi, meu nome eh' e digite seu username")
