@@ -1,56 +1,111 @@
 import socket
 import os
+import queue
+import math
+import threading
+import struct
+from zlib import crc32
 
 clients = []
+messages = queue.Queue()
 
-def main():
-    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server.bind(('localhost', 7777))
 
-    try:
-        server.bind(('localhost', 7777))
-        print("Servidor iniciado na porta 7777")
-    except Exception as e:
-        print(f'\nNão foi possível iniciar o servidor! Erro: {e}\n')
+frags_received_list = []
+frags_received_count = 0
+
+
+def create_fragment(payload, frag_size, frag_index, frags_numb):
+    data = payload[:frag_size]
+    crc = crc32(data)
+    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, crc)
+    return header + data
+
+
+def unpack_and_reassemble(data, addr):
+    global frags_received_count, frags_received_list
+
+    header = data[:16]
+    message_in_bytes = data[16:]
+    frag_size, frag_index, frags_numb, crc = struct.unpack('!IIII', header)
+
+    # Verificar CRC
+    if crc != crc32(message_in_bytes):
+        print("Fragmento com CRC inválido, ignorando.")
         return
 
+    if len(frags_received_list) < frags_numb:
+        add = frags_numb - len(frags_received_list)
+        frags_received_list.extend([None] * add)
+
+    frags_received_list[frag_index] = message_in_bytes
+    frags_received_count += 1
+
+    if frags_received_count == frags_numb:
+        with open('received_message.txt', 'wb') as file:
+            for fragment in frags_received_list:
+                file.write(fragment)
+        frags_received_count = 0
+        frags_received_list = []
+        process_received_message(addr)
+
+    elif (frags_received_count < frags_numb) and (frag_index == frags_numb - 1):
+        print("Provavelmente houve perda de pacotes")
+        frags_received_count = 0
+        frags_received_list = []
+
+
+def process_received_message(addr):
+    with open('received_message.txt', 'r') as file:
+        file_content = file.read()
+    os.remove('received_message.txt')
+    for line in file_content.strip().split('\n'):
+        line = line.strip()
+        if "SIGNUP_TAG:" in line:
+            name = line.split(":")[1]
+            sent_msg = f"{name} entrou na sala"
+            messages.put(sent_msg)
+        elif "SIGNOUT_TAG:" in line:
+            name = line.split(":")[1]
+            sent_msg = f"{name} saiu da sala"
+            messages.put(sent_msg)
+        else:
+            messages.put(line)
+    send_to_all_clients(addr)
+
+
+def send_to_all_clients(sender_addr):
+    frag_index = 0
+    frag_size = 1024
+    while not messages.empty():
+        message = messages.get()
+        with open('message_client.txt', 'w') as file:
+            file.write(message)
+
+        with open('message_client.txt', 'rb') as file:
+            payload = file.read()
+            frags_numb = math.ceil(len(payload) / frag_size)
+
+            for client in clients:
+                if client != sender_addr:  # Evitar enviar para o remetente original
+                    fragment_payload = payload
+                    fragment_index = 0
+                    while fragment_payload:
+                        fragment = create_fragment(fragment_payload, frag_size, fragment_index, frags_numb)
+                        server.sendto(fragment, client)
+                        fragment_payload = fragment_payload[frag_size:]
+                        fragment_index += 1
+        os.remove('message_client.txt')
+
+
+def receive():
     while True:
         data, addr = server.recvfrom(1024)
-        if not data:
-            continue
+        if addr not in clients:
+            clients.append(addr)
+        unpack_and_reassemble(data, addr)
 
-        with open('received_message.txt', 'ab') as file:
-            file.write(data)
 
-        with open('received_message.txt', 'r') as file:
-            file_content = file.readlines()
-
-        os.remove('received_message.txt')
-
-        for line in file_content:
-            line = line.strip()  # Remove espaços em branco no início e no final da linha
-            if "SIGNUP_TAG:" in line:
-                name = line.split(":")[1]
-                sent_msg = f"{name} entrou na sala"
-                if addr not in clients:
-                    clients.append(addr)
-                send_txt(server, clients, addr, sent_msg)
-            elif "SIGNOUT_TAG:" in line:
-                name = line.split(":")[1]
-                sent_msg = f"{name} saiu da sala"
-                if addr in clients:
-                    clients.remove(addr)
-                send_txt(server, clients, addr, sent_msg)
-            else:
-                send_txt(server, clients, addr, line)
-
-def send_txt(server, clients, addr, message):
-    for client in clients:
-        if client != addr:  # Não envia a mensagem para o próprio emissor
-            with open('sent_message.txt', 'w') as file:
-                file.write(message)
-            with open('sent_message.txt', 'rb') as file:
-                while (chunk := file.read(1024)):
-                    server.sendto(chunk, client)
-            os.remove('sent_message.txt')
-
-main()
+thread = threading.Thread(target=receive)
+thread.start()
