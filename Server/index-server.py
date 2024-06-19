@@ -6,23 +6,25 @@ import threading
 import struct
 from zlib import crc32
 
+# Configuração do Cliente
 clients = []
 messages = queue.Queue()
 
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server.bind(('localhost', 7777))
 
+# Armazenamento de fragmentos recebidos
 frags_received_list = []
 frags_received_count = 0
 
-
+#Função que cria fragmentos
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
     crc = crc32(data)
     header = struct.pack('!IIII', frag_size, frag_index, frags_numb, crc)
     return header + data
 
-
+# Verificação da Integridade dos dados recebidos por meio de desempacotamento e reagrupação
 def unpack_and_reassemble(data, addr):
     global frags_received_count, frags_received_list
 
@@ -48,14 +50,14 @@ def unpack_and_reassemble(data, addr):
                 file.write(fragment)
         frags_received_count = 0
         frags_received_list = []
-        process_received_message(addr)
+        process_received_message(addr) #Aqui há uma diferença da versão do cliente e servidor
 
     elif (frags_received_count < frags_numb) and (frag_index == frags_numb - 1):
         print("Provavelmente houve perda de pacotes")
         frags_received_count = 0
         frags_received_list = []
 
-
+#Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
 def process_received_message(addr):
     with open('received_message.txt', 'r') as file:
         file_content = file.read()
@@ -74,7 +76,7 @@ def process_received_message(addr):
             messages.put(line)
     send_to_all_clients(addr)
 
-
+# Faz o broadcast da mensagem para os clientes
 def send_to_all_clients(sender_addr):
     frag_index = 0
     frag_size = 1024
@@ -98,7 +100,7 @@ def send_to_all_clients(sender_addr):
                         fragment_index += 1
         os.remove('message_client.txt')
 
-
+# Função de receber dados
 def receive():
     while True:
         data, addr = server.recvfrom(1024)
