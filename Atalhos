@@ -1,0 +1,14 @@
+Servidor
+cd /Users/leandrosantos/Documents/GitHub/Socket_UDP/Server
+ls index-server.py
+python3 index-server.py
+
+
+
+Client
+
+cd /Users/leandrosantos/Documents/GitHub/Socket_UDP/Client
+ls index-client.py
+python3 index-client.py
+
+
