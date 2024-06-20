@@ -4,12 +4,12 @@ Este é um projeto da disciplina Redes de Computadores, realizado pelos alunos d
 
 ## Integrantes do projeto
 
-Ismael Henrique - ihxcs
-José Leandro - jlsf
-Júlia Nunes - jnas2
-Mateus Ribeiro - mra4
-Rafael Mourato - rmdv
-Sara Simone - sseap
+-Ismael Henrique - ihxcs
+-José Leandro - jlsf
+-Júlia Nunes - jnas2
+-Mateus Ribeiro - mra4
+-Rafael Mourato - rmdv
+-Sara Simone - sseap
 
 ## Especificações do projeto
 
