@@ -110,7 +110,7 @@ def main():
 #Função que manda a mensagem
 def send_txt():
     frag_index = 0
-    frag_size = 1024
+    frag_size = 1008
 
     with open('message_client.txt', 'rb') as file:
         payload = file.read()

@@ -79,7 +79,7 @@ def process_received_message(addr):
 # Faz o broadcast da mensagem para os clientes
 def send_to_all_clients(sender_addr):
     frag_index = 0
-    frag_size = 1024
+    frag_size = 1008
     while not messages.empty():
         message = messages.get()
         with open('message_client.txt', 'w') as file:
