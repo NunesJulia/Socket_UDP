@@ -82,10 +82,10 @@ def send_to_all_clients(sender_addr):
     frag_size = 1008
     while not messages.empty():
         message = messages.get()
-        with open('message_client.txt', 'w') as file:
+        with open('message_server.txt', 'w') as file:
             file.write(message)
 
-        with open('message_client.txt', 'rb') as file:
+        with open('message_server.txt', 'rb') as file:
             payload = file.read()
             frags_numb = math.ceil(len(payload) / frag_size)
 
@@ -98,7 +98,7 @@ def send_to_all_clients(sender_addr):
                         server.sendto(fragment, client)
                         fragment_payload = fragment_payload[frag_size:]
                         fragment_index += 1
-        os.remove('message_client.txt')
+        os.remove('message_server.txt')
 
 # Função de receber dados
 def receive():
