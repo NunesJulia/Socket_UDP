@@ -6,19 +6,20 @@ import threading
 import struct
 from zlib import crc32
 
-#Configurações do servidor e Variaveis de fragmento
+# Configuração do Cliente
 clients = []
 messages = queue.Queue()
 
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server.bind(('localhost', 7777))
 
+# Armazenamento de fragmentos recebidos
 frags_received_list = []
 frags_received_count = 0
-numeroSequenciaEsperado = 0 #!
+numeroSequenciaEsperado = 0
 TIMEOUT = 2
 
-#Função que cria fragmentos
+# Função que cria fragmentos
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
     crc = crc32(data)
@@ -29,6 +30,10 @@ def create_fragment(payload, frag_size, frag_index, frags_numb):
 def unpack_and_reassemble(data, addr):
     global frags_received_count, frags_received_list, numeroSequenciaEsperado
 
+    if len(data) < 16:
+        print("Pacote recebido com tamanho insuficiente, ignorando.")
+        return
+
     header = data[:16]
     message_in_bytes = data[16:]
     frag_size, frag_index, frags_numb, crc = struct.unpack('!IIII', header)
@@ -36,14 +41,13 @@ def unpack_and_reassemble(data, addr):
     # Verificar CRC
     if crc != crc32(message_in_bytes):
         print("Fragmento com CRC inválido, ignorando.")
-        mandaAck(addr, numeroSequenciaEsperado - 1) #!Envia ack do ultimo pacote recebido com sucesso
+        mandaAck(addr, numeroSequenciaEsperado - 1)
         return
 
-    #! novo IF para caso o pacote esteja fora de sequencia
     if frag_index != numeroSequenciaEsperado:
         print(f"Fragmento fora de sequencia. Esperado: {numeroSequenciaEsperado} Recebido: {frag_index}")
         mandaAck(addr, numeroSequenciaEsperado - 1)
-
+        return
 
     if len(frags_received_list) < frags_numb:
         add = frags_numb - len(frags_received_list)
@@ -51,9 +55,9 @@ def unpack_and_reassemble(data, addr):
 
     frags_received_list[frag_index] = message_in_bytes
     frags_received_count += 1
-    numeroSequenciaEsperado += 1 #!Aumenta o numero de sequencia esperado
+    numeroSequenciaEsperado += 1
 
-    mandaAck(addr, frag_index) #!Manda o ack e pede o proximo corretamente
+    mandaAck(addr, frag_index)
 
     if frags_received_count == frags_numb:
         with open('received_message.txt', 'wb') as file:
@@ -62,7 +66,7 @@ def unpack_and_reassemble(data, addr):
         frags_received_count = 0
         frags_received_list = []
         numeroSequenciaEsperado = 0
-        process_received_message(addr) #Aqui há uma diferença da versão do cliente e servidor
+        process_received_message(addr)
 
     elif (frags_received_count < frags_numb) and (frag_index == frags_numb - 1):
         print("Provavelmente houve perda de pacotes")
@@ -72,11 +76,11 @@ def unpack_and_reassemble(data, addr):
 
 # Envia o ack para o cliente
 def mandaAck(addr, frag_index):
-    ack = struct.pack('!I', frag_index)   #OBS - Mateus: Não sei ao certo ainda se isso é totalmente válido ou seria melhor criar o ACK com a propria função de criar fragmentos.
-    server.sendto(ack,addr)
+    ack = struct.pack('!I', frag_index)
+    server.sendto(ack, addr)
     print(f"ACK do pacote {frag_index}")
 
-#Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
+# Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
 def process_received_message(addr):
     with open('received_message.txt', 'r') as file:
         file_content = file.read()
@@ -114,13 +118,11 @@ def send_to_all_clients(sender_addr):
                     fragment_index = 0
                     while fragment_payload:
                         mandaFragmento(client, fragment_payload[:frag_size], frag_index, frags_numb)
-                        #fragment = create_fragment(fragment_payload, frag_size, fragment_index, frags_numb)
-                        #server.sendto(fragment, client)
                         fragment_payload = fragment_payload[frag_size:]
                         fragment_index += 1
         os.remove('message_client.txt')
 
-#Função que trata os acks
+# Função que trata os acks
 def mandaFragmento(client, fragment, frag_index, frags_numb):
     while True:
         frag = create_fragment(fragment, len(fragment), frag_index, frags_numb)
@@ -128,7 +130,7 @@ def mandaFragmento(client, fragment, frag_index, frags_numb):
         print(f"Fragmento {frag_index} enviado, aguardando ACK...")
 
         server.settimeout(TIMEOUT)
-        try: #! Mesma coisa do cliente
+        try:
             ack_data, _ = server.recvfrom(1024)
             ack_frag_index = struct.unpack('!I', ack_data)[0]
             if ack_frag_index == frag_index:
@@ -146,8 +148,6 @@ def receive():
         if addr not in clients:
             clients.append(addr)
         unpack_and_reassemble(data, addr)
-        #Acho que seria uma alteração aqui para confirmar o recebimento do ack no servidor
-
 
 thread = threading.Thread(target=receive)
 thread.start()
