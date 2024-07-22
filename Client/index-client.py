@@ -46,6 +46,11 @@ def unpack_and_reassemble(data):
     frags_received_list[frag_index] = message_in_bytes # Armazena o fragmento na lista na posição correta
     frags_received_count += 1
 
+    #Seta o ack agora no cliente
+    ack_packet = struct.pack('!I', frag_index)
+    client.sendto(ack_packet)
+    print("Ack enviado")
+
     # Verifica se todos os fragmentos foram recebidos e reseta a lista para o proximo pacote ou se houve perda de pacote
     if frags_received_count == frags_numb:
         with open('received_message.txt', 'wb') as file:
@@ -88,6 +93,7 @@ def create_fragment(payload, frag_size, frag_index, frags_numb):
 
 def main():
     username = ''
+    print("Para conectar a sala digite 'hi, meu nome eh' e digite seu username")
     #Loop principal
     while True:
         message = input("")
@@ -131,7 +137,18 @@ def send_txt():
 
         while payload:
             fragment = create_fragment(payload, frag_size, frag_index, frags_numb)
-            client.sendto(fragment, ('localhost', 7777))
+            while True:
+                client.sendto(fragment, ('localhost', 7777))
+                try:
+                    client.settimeout(1)
+                    ack, _ = client.recvfrom(1024)
+                    print("TESTE: MENSAGEM DO SERVIDOR, ACK RECEBIDO")
+                    ack_index = struct.unpack('!I', ack)[0]
+                    if ack_index == frag_index:
+                        break
+                except socket.timeout:
+                    print(f"MENSGEM DO SERVIDOR: Desculpe! parece que ocorreu um erro enviando sua mensagem! Reenviando... Timeout: reenviando fragmento {frag_index}")
+            
             payload = payload[frag_size:]
             frag_index += 1
     os.remove('message_client.txt')

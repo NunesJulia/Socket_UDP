@@ -5,6 +5,7 @@ import math
 import threading
 import struct
 from zlib import crc32
+import time
 
 # Configuração do Cliente
 clients = []
@@ -65,6 +66,11 @@ def unpack_and_reassemble(data, addr):
     frags_received_list[frag_index] = message_in_bytes
     frags_received_count += 1
 
+    #Define um ack e o envia
+    ack_packet = struct.pack('!I', frag_index)
+    server.sendto(ack_packet, addr)
+    print("\nAck de Recebimento do servidor enviado\n") #O Ack só será enviado caso a mesnagem tenha sido tratada corretamente.
+
     if frags_received_count == frags_numb:
         with open('received_message.txt', 'wb') as file:
             for fragment in frags_received_list:
@@ -121,10 +127,23 @@ def send_to_all_clients(sender_addr):
                     fragment_index = 0
                     while fragment_payload:
                         fragment = create_fragment(fragment_payload, frag_size, fragment_index, frags_numb)
-                        server.sendto(fragment, client)
+                        while True:
+                            server.sendto(fragment, client)
+                            print(f"Fragmento enviado para {client}\n")
+                            try:
+                                server.settimeout(1) #Timer
+                                ack, _ = server.recvfrom(1024) #Espera um ack
+                                
+                                print("Ack recebido de {client}") 
+                                ack_index = struct.unpack('I', ack)[0]
+                                
+                                if ack_index == fragment_index:
+                                    break
+                            
+                            except socket.timeout:
+                                print(f"Timeout: reenviando fragmento {fragment_index}")
                         fragment_payload = fragment_payload[frag_size:]
                         fragment_index += 1
-                    print(f"Mensagem enviada para {client}\n") 
         os.remove('message_server.txt')
 
 # Função de receber dados
