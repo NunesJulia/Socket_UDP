@@ -15,17 +15,28 @@ client.bind(("localhost", random.randint(8000, 9000)))
 frags_received_list = []
 frags_received_count = 0
 
+def calcula_checksum(data):
+    checksum = 0
+    for byte in data:
+        checksum = (checksum + byte) & 0xFF
+    return checksum
+
 # Verificação da Integridade dos dados recebidos por meio de desempacotamento e reagrupação 
 def unpack_and_reassemble(data):
     global frags_received_count, frags_received_list
 
-    header = data[:16] 
-    message_in_bytes = data[16:] 
-    frag_size, frag_index, frags_numb, crc = struct.unpack('!IIII', header) 
+    header = data[:20] 
+    message_in_bytes = data[20:] 
+    frag_size, frag_index, frags_numb, crc, checksum = struct.unpack('!IIIII', header) 
 
     # Verifica CRC
     if crc != crc32(message_in_bytes): # ----------------> Essa função calcula o CRC32 da mensagem e cerifica se possui o mesmo valor do informado pelo cabeçalho
         print("Fragmento com CRC inválido, ignorando.")
+        return
+
+    # Verifica Checksum
+    if checksum != calcula_checksum(message_in_bytes):
+        print("Fragmento com checksum inválido, ignorando.")
         return
 
     if len(frags_received_list) < frags_numb: 
@@ -70,7 +81,8 @@ thread1.start()
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
     crc = crc32(data)
-    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, crc)
+    checksum = calcula_checksum(data)
+    header = struct.pack('!IIIII', frag_size, frag_index, frags_numb, crc, checksum)
     return header + data
 
 
