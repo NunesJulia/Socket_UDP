@@ -67,13 +67,18 @@ def process_received_message(addr):
         if "SIGNUP_TAG:" in line:
             name = line.split(":")[1]
             sent_msg = f"{name} entrou na sala"
+            print(f"{addr} entrou na sala")
             messages.put(sent_msg)
         elif "SIGNOUT_TAG:" in line:
             name = line.split(":")[1]
             sent_msg = f"{name} saiu da sala"
+            print(f"{addr} saiu da sala")
+            clients.remove(addr) #Remove o cliente da lista de clientes
+            print(f"Nova lista de Clientes: {clients}")
             messages.put(sent_msg)
         else:
             messages.put(line)
+            print(f"Mensagem recebida de {addr} processada.")
     send_to_all_clients(addr)
 
 # Faz o broadcast da mensagem para os clientes
@@ -98,14 +103,17 @@ def send_to_all_clients(sender_addr):
                         server.sendto(fragment, client)
                         fragment_payload = fragment_payload[frag_size:]
                         fragment_index += 1
+                    print(f"Mensagem enviada para {client}\n") 
         os.remove('message_server.txt')
 
 # Função de receber dados
 def receive():
     while True:
         data, addr = server.recvfrom(1024)
+        print("Mensagem recebida")
         if addr not in clients:
             clients.append(addr)
+            print(f"Lista de Clientes: {clients}")
         unpack_and_reassemble(data, addr)
 
 

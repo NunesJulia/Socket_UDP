@@ -86,6 +86,7 @@ def main():
             with open('message_client.txt', 'w') as file:
                 file.write(sent_msg)
             send_txt()
+            print(f"Usuario {username}, você está conectado.")
         
         #Trata a saida do usuario
         elif username and message == "bye":
@@ -94,7 +95,7 @@ def main():
                 file.write(sent_msg)
             send_txt()
             print("Conexão encerrada, Até logo!")
-            exit()
+            exit() #Encerra a conexão
 
         #Trata a mensagem do usuario
         else:
