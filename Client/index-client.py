@@ -15,17 +15,28 @@ client.bind(("localhost", random.randint(8000, 9000)))
 frags_received_list = []
 frags_received_count = 0
 
+def calcula_checksum(data):
+    checksum = 0
+    for byte in data:
+        checksum = (checksum + byte) & 0xFF
+    return checksum
+
 # Verificação da Integridade dos dados recebidos por meio de desempacotamento e reagrupação 
 def unpack_and_reassemble(data):
     global frags_received_count, frags_received_list
 
-    header = data[:16] 
-    message_in_bytes = data[16:] 
-    frag_size, frag_index, frags_numb, crc = struct.unpack('!IIII', header) 
+    header = data[:20] 
+    message_in_bytes = data[20:] 
+    frag_size, frag_index, frags_numb, crc, checksum = struct.unpack('!IIIII', header) 
 
     # Verifica CRC
     if crc != crc32(message_in_bytes): # ----------------> Essa função calcula o CRC32 da mensagem e cerifica se possui o mesmo valor do informado pelo cabeçalho
         print("Fragmento com CRC inválido, ignorando.")
+        return
+
+    # Verifica Checksum
+    if checksum != calcula_checksum(message_in_bytes):
+        print("Fragmento com checksum inválido, ignorando.")
         return
 
     if len(frags_received_list) < frags_numb: 
@@ -34,6 +45,11 @@ def unpack_and_reassemble(data):
 
     frags_received_list[frag_index] = message_in_bytes # Armazena o fragmento na lista na posição correta
     frags_received_count += 1
+
+    #Seta o ack agora no cliente
+    ack_packet = struct.pack('!I', frag_index)
+    client.sendto(ack_packet)
+    print("Ack enviado")
 
     # Verifica se todos os fragmentos foram recebidos e reseta a lista para o proximo pacote ou se houve perda de pacote
     if frags_received_count == frags_numb:
@@ -70,12 +86,14 @@ thread1.start()
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
     crc = crc32(data)
-    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, crc)
+    checksum = calcula_checksum(data)
+    header = struct.pack('!IIIII', frag_size, frag_index, frags_numb, crc, checksum)
     return header + data
 
 
 def main():
     username = ''
+    print("Para conectar a sala digite 'hi, meu nome eh' e digite seu username")
     #Loop principal
     while True:
         message = input("")
@@ -119,7 +137,18 @@ def send_txt():
 
         while payload:
             fragment = create_fragment(payload, frag_size, frag_index, frags_numb)
-            client.sendto(fragment, ('localhost', 7777))
+            while True:
+                client.sendto(fragment, ('localhost', 7777))
+                try:
+                    client.settimeout(1)
+                    ack, _ = client.recvfrom(1024)
+                    print("TESTE: MENSAGEM DO SERVIDOR, ACK RECEBIDO")
+                    ack_index = struct.unpack('!I', ack)[0]
+                    if ack_index == frag_index:
+                        break
+                except socket.timeout:
+                    print(f"MENSGEM DO SERVIDOR: Desculpe! parece que ocorreu um erro enviando sua mensagem! Reenviando... Timeout: reenviando fragmento {frag_index}")
+            
             payload = payload[frag_size:]
             frag_index += 1
     os.remove('message_client.txt')
