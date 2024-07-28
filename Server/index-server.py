@@ -4,7 +4,7 @@ import queue
 import math
 import threading
 import struct
-from zlib import crc32
+import time
 
 # Configuração do Cliente
 clients = []
@@ -17,43 +17,40 @@ server.bind(('localhost', 7777))
 frags_received_list = []
 frags_received_count = 0
 
+# Variáveis de controle de ACK
+acks_received = {}
+acks_locks = {}
+ack_timeout = 2  # Tempo de espera para o ACK em segundos
 
-#Função que faz o calculo do Checksum (não o CRC)
+# Função que faz o cálculo do Checksum (não o CRC)
 def calcula_checksum(data):
     checksum = 0
     for byte in data:
-        checksum = (checksum + byte) & 0xFF #Serve para manter o checksum no intervalo de 1 byte, essa operação "& 0xFF" se a soma de checksum e byte resultar em um valor que excede 8 bits, a operação & 0xFF descarta todos os bits acima do oitavo bit. Isso mantém o checksum dentro do intervalo de 0 a 255 (8 bits).
+        checksum = (checksum + byte) & 0xFF
     return checksum
 
-
-#Função que cria fragmentos
-def create_fragment(payload, frag_size, frag_index, frags_numb):
+# Função que cria fragmentos
+def create_fragment(payload, frag_size, frag_index, frags_numb, message_id):
     data = payload[:frag_size]
     checksum = calcula_checksum(data)
-
-    print(
-        f"Criando fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}")  # Verificação de fragmento
-
-    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, checksum)
+    header = struct.pack('!IIIIII', frag_size, frag_index, frags_numb, checksum, message_id, frag_index)
     return header + data
 
 # Verificação da Integridade dos dados recebidos por meio de desempacotamento e reagrupação
 def unpack_and_reassemble(data, addr):
     global frags_received_count, frags_received_list
 
-    header = data[:16]
-    message_in_bytes = data[16:]
-    frag_size, frag_index, frags_numb, checksum = struct.unpack('!IIII', header)
+    header = data[:24]
+    message_in_bytes = data[24:]
+    frag_size, frag_index, frags_numb, checksum, message_id, frag_index = struct.unpack('!IIIIII', header)
 
     # Verificar o Checksum
     checksum_calculado = calcula_checksum(message_in_bytes)
     if checksum != checksum_calculado:
-        print(
-            f"Fragmento com checksum clássico inválido, ignorando.\nEsperado: {checksum},\nCalculado: {checksum_calculado}")
+        print(f"Fragmento com checksum inválido, ignorando.\nEsperado: {checksum},\nCalculado: {checksum_calculado}")
         return
 
-    print(
-        f"\nRecebido fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}\n")
+    print(f"Recebido fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}, Message ID={message_id}")
 
     if len(frags_received_list) < frags_numb:
         add = frags_numb - len(frags_received_list)
@@ -68,14 +65,13 @@ def unpack_and_reassemble(data, addr):
                 file.write(fragment)
         frags_received_count = 0
         frags_received_list = []
-        process_received_message(addr) #Aqui há uma diferença da versão do cliente e servidor
-
+        process_received_message(addr)  # Aqui há uma diferença da versão do cliente e servidor
     elif (frags_received_count < frags_numb) and (frag_index == frags_numb - 1):
         print("Provavelmente houve perda de pacotes")
         frags_received_count = 0
         frags_received_list = []
 
-#Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
+# Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
 def process_received_message(addr):
     with open('received_message.txt', 'r') as file:
         file_content = file.read()
@@ -91,7 +87,7 @@ def process_received_message(addr):
             name = line.split(":")[1]
             sent_msg = f"{name} saiu da sala"
             print(f"{addr} saiu da sala")
-            clients.remove(addr) #Remove o cliente da lista de clientes
+            clients.remove(addr)  # Remove o cliente da lista de clientes
             print(f"Nova lista de Clientes: {clients}")
             messages.put(sent_msg)
         else:
@@ -111,29 +107,62 @@ def send_to_all_clients(sender_addr):
         with open('message_server.txt', 'rb') as file:
             payload = file.read()
             frags_numb = math.ceil(len(payload) / frag_size)
+            message_id = int(time.time() * 1000) & 0xFFFFFFFF  # ID único baseado no timestamp
 
             for client in clients:
                 if client != sender_addr:  # Evitar enviar para o remetente original
                     fragment_payload = payload
                     fragment_index = 0
                     while fragment_payload:
-                        fragment = create_fragment(fragment_payload, frag_size, fragment_index, frags_numb)
-                        server.sendto(fragment, client)
+                        fragment = create_fragment(fragment_payload, frag_size, fragment_index, frags_numb, message_id)
+                        send_with_ack(fragment, client, message_id)
                         fragment_payload = fragment_payload[frag_size:]
                         fragment_index += 1
-                    print(f"Mensagem enviada para {client}\n") 
+                    print(f"Mensagem enviada para {client}")
         os.remove('message_server.txt')
+
+# Função de enviar dados com ACK
+def send_with_ack(data, addr, message_id):
+    global acks_received, acks_locks
+    if addr not in acks_received:
+        acks_received[addr] = {}
+        acks_locks[addr] = threading.Lock()
+    retries = 3
+    while retries > 0:
+        with acks_locks[addr]:
+            acks_received[addr][message_id] = False
+        server.sendto(data, addr)
+        print(f"Fragmento enviado para {addr}, aguardando ACK...")
+        start_time = time.time()
+        while time.time() - start_time < ack_timeout:
+            with acks_locks[addr]:
+                if acks_received[addr].get(message_id, False):
+                    print("ACK recebido.")
+                    return
+            time.sleep(0.1)
+        print("Tempo de espera do ACK esgotado, reenviando fragmento...")
+        retries -= 1
+    if not acks_received[addr].get(message_id, False):
+        print(f"Não foi possível obter ACK de {addr} após {3 - retries} tentativas.")
 
 # Função de receber dados
 def receive():
+    global acks_received, acks_locks
     while True:
         data, addr = server.recvfrom(1024)
-        print("Mensagem recebida")
-        if addr not in clients:
-            clients.append(addr)
-            print(f"Lista de Clientes: {clients}")
-        unpack_and_reassemble(data, addr)
-
+        if data.startswith(b'ACK'):
+            _, message_id = struct.unpack('!II', data[3:11])
+            with acks_locks[addr]:
+                acks_received[addr][message_id] = True
+        else:
+            print("Mensagem recebida")
+            if addr not in clients:
+                clients.append(addr)
+                print(f"Lista de Clientes: {clients}")
+            unpack_and_reassemble(data, addr)
+            _, message_id, frag_index = struct.unpack('!III', data[:12])
+            ack_data = struct.pack('!II', len(data), message_id)
+            server.sendto(b'ACK' + ack_data, addr)
 
 thread = threading.Thread(target=receive)
 thread.start()
