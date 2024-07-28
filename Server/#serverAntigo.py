@@ -1,3 +1,5 @@
+#serverAntigo
+
 import socket
 import os
 import queue
@@ -5,43 +7,35 @@ import math
 import threading
 import struct
 from zlib import crc32
-import time
 
-# Configuração do Servidor
+# Configuração do Cliente
 clients = []
 messages = queue.Queue()
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server.bind(('localhost', 7777))
-
+server.bind(('localhost', 7776))
 # Armazenamento de fragmentos recebidos
 frags_received_list = []
 frags_received_count = 0
 
-#Variavel relacionada ao RDT 3.0
-timeout = 2  # Timeout de 2 segundos
-lock = threading.Lock()
 
-# Função que faz o calculo do Checksum
+#Função que faz o calculo do Checksum (não o CRC)
 def calcula_checksum(data):
     checksum = 0
     for byte in data:
-        checksum = (checksum + byte) & 0xFF  # Serve para manter o checksum no intervalo de 1 byte
+        checksum = (checksum + byte) & 0xFF #Serve para manter o checksum no intervalo de 1 byte, essa operação "& 0xFF" se a soma de checksum e byte resultar em um valor que excede 8 bits, a operação & 0xFF descarta todos os bits acima do oitavo bit. Isso mantém o checksum dentro do intervalo de 0 a 255 (8 bits).
     return checksum
 
-# Função que cria fragmentos
+
+#Função que cria fragmentos
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
     checksum = calcula_checksum(data)
 
-    print(f"Criando fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}")  # Verificação de fragmento
+    print(
+        f"Criando fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}")  # Verificação de fragmento
 
     header = struct.pack('!IIII', frag_size, frag_index, frags_numb, checksum)
     return header + data
-
-# Função para enviar ACK
-def send_ack(addr):
-    ack_packet = struct.pack('!I', 1)
-    server.sendto(ack_packet, addr)
 
 # Verificação da Integridade dos dados recebidos por meio de desempacotamento e reagrupação
 def unpack_and_reassemble(data, addr):
@@ -54,10 +48,12 @@ def unpack_and_reassemble(data, addr):
     # Verificar o Checksum
     checksum_calculado = calcula_checksum(message_in_bytes)
     if checksum != checksum_calculado:
-        print(f"Fragmento com checksum clássico inválido, ignorando.\nEsperado: {checksum},\nCalculado: {checksum_calculado}")
+        print(
+            f"Fragmento com checksum clássico inválido, ignorando.\nEsperado: {checksum},\nCalculado: {checksum_calculado}")
         return
 
-    print(f"\nRecebido fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}\n")
+    print(
+        f"\nRecebido fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}\n")
 
     if len(frags_received_list) < frags_numb:
         add = frags_numb - len(frags_received_list)
@@ -70,16 +66,12 @@ def unpack_and_reassemble(data, addr):
                 file.write(fragment)
         frags_received_count = 0
         frags_received_list = []
-        process_received_message(addr)  # Aqui há uma diferença da versão do cliente e servidor
+        process_received_message(addr) #Aqui há uma diferença da versão do cliente e servidor
     elif (frags_received_count < frags_numb) and (frag_index == frags_numb - 1):
         print("Provavelmente houve perda de pacotes")
         frags_received_count = 0
         frags_received_list = []
-    
-    # Envia ACK após receber o fragmento
-    send_ack(addr)
-
-# Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
+#Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
 def process_received_message(addr):
     with open('received_message.txt', 'r') as file:
         file_content = file.read()
@@ -95,14 +87,13 @@ def process_received_message(addr):
             name = line.split(":")[1]
             sent_msg = f"{name} saiu da sala"
             print(f"{addr} saiu da sala")
-            clients.remove(addr)  # Remove o cliente da lista de clientes
+            clients.remove(addr) #Remove o cliente da lista de clientes
             print(f"Nova lista de Clientes: {clients}")
             messages.put(sent_msg)
         else:
             messages.put(line)
             print(f"Mensagem recebida de {addr} processada.")
     send_to_all_clients(addr)
-
 # Faz o broadcast da mensagem para os clientes
 def send_to_all_clients(sender_addr):
     frag_index = 0
@@ -125,7 +116,6 @@ def send_to_all_clients(sender_addr):
                         fragment_index += 1
                     print(f"Mensagem enviada para {client}\n") 
         os.remove('message_server.txt')
-
 # Função de receber dados
 def receive():
     while True:
@@ -135,6 +125,5 @@ def receive():
             clients.append(addr)
             print(f"Lista de Clientes: {clients}")
         unpack_and_reassemble(data, addr)
-
 thread = threading.Thread(target=receive)
 thread.start()
