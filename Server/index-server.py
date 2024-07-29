@@ -1,3 +1,4 @@
+#
 import socket
 import os
 import queue
@@ -18,7 +19,7 @@ frags_received_count = 0
 
 # Variável relacionada ao RDT 3.0
 timeout = 2  # Timeout de 2 segundos
-
+ack_received_flag = False
 
 # Função que faz o cálculo do Checksum
 def calcula_checksum(data):
@@ -27,7 +28,6 @@ def calcula_checksum(data):
         checksum = (checksum + byte) & 0xFF
     return checksum
 
-
 # Função que cria fragmentos
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
@@ -35,13 +35,11 @@ def create_fragment(payload, frag_size, frag_index, frags_numb):
     header = struct.pack('!IIII', frag_size, frag_index, frags_numb, checksum)
     return header + data
 
-
 # Função para enviar ACK
 def send_ack(addr):
     ack_packet = struct.pack('!I', 1)
     server.sendto(ack_packet, addr)
-    print('ACK enviado')
-
+    print(f'-------------> ACK enviado para {addr}')
 
 # Verificação da integridade dos dados recebidos por meio de desempacotamento e reagrupação
 def unpack_and_reassemble(data, addr):
@@ -77,7 +75,6 @@ def unpack_and_reassemble(data, addr):
     # Envia ACK após receber o fragmento
     send_ack(addr)
 
-
 # Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
 def process_received_message(addr):
     with open('received_message.txt', 'r') as file:
@@ -101,7 +98,6 @@ def process_received_message(addr):
             print(f"Mensagem recebida de {addr} processada.")
     send_to_all_clients(addr)
 
-
 # Faz o broadcast da mensagem para os clientes
 def send_to_all_clients(sender_addr):
     frag_index = 0
@@ -119,23 +115,42 @@ def send_to_all_clients(sender_addr):
                     fragment_index = 0
                     while fragment_payload:
                         fragment = create_fragment(fragment_payload, frag_size, fragment_index, frags_numb)
-                        server.sendto(fragment, client)
+                        send_fragment(fragment, client)
                         fragment_payload = fragment_payload[frag_size:]
                         fragment_index += 1
                     print(f"Mensagem enviada para {client}\n")
         os.remove('message_server.txt')
 
+def send_fragment(fragment, addr):
+    global ack_received_flag
+    ack_received_flag = False
+    # Loop de ACK
+    while not ack_received_flag:  # Enquanto a função "ACK Received" não transformar a flag em True, reenvia a mensagem
+        server.sendto(fragment, addr)
+        start = time.time()
+        while time.time() - start < timeout:
+            if ack_received_flag:
+                break
 
 # Função de receber dados
 def receive():
+    global ack_received_flag
     while True:
         data, addr = server.recvfrom(1024)
         print("Mensagem recebida")
         if addr not in clients:
             clients.append(addr)
             print(f"Lista de Clientes: {clients}")
-        unpack_and_reassemble(data, addr)
+        header = data[:16]
+        message_type = struct.unpack('!I', header[:4])[0]
 
+        # Se a mensagem recebida for um ACK, altera a flag de ACK para True
+        if message_type == 1:  # ACK
+            ack_received_flag = True
+            print('ACK recebido')
+        # Se a mensagem recebida NÃO for um ACK: Trata a mensagem
+        else:
+            unpack_and_reassemble(data, addr)
 
 thread = threading.Thread(target=receive)
 thread.start()
