@@ -29,7 +29,7 @@ Neste projeto, cada equipe desenvolverá um servidor de chat de sala única, ond
 
 ## Modo de utilização
 
-Baixe o arquivo zip e certifique-se de possuir todas as bibliotecas instaladas. Após isso, inicialize o servidor E o(s) Cliente(s) e converse! 
+Baixe o arquivo zip e certifique-se de possuir todas as bibliotecas instaladas. Após isso, inicialize o servidor e o(s) Cliente(s) e converse! 
 
 ## Link para o repositório git
 
