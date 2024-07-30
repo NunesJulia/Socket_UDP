@@ -37,7 +37,7 @@ def create_fragment(payload, frag_size, frag_index, frags_numb):
 def send_ack(addr):
     ack_packet = struct.pack('!I', 1)
     server.sendto(ack_packet, addr)
-    print(f'-------------> ACK enviado para {addr}')
+    print(f'--------------> ACK enviado para {addr}')
 
 # Verificação da integridade dos dados recebidos por meio de desempacotamento e reagrupação
 def unpack_and_reassemble(data, addr):
@@ -83,7 +83,6 @@ def process_received_message(addr):
         if "SIGNUP_TAG:" in line:
             name = line.split(":")[1]
             sent_msg = f"{name} entrou na sala"
-            print(f"{addr} entrou na sala")
             messages.put(sent_msg)
         elif "SIGNOUT_TAG:" in line:
             name = line.split(":")[1]
@@ -115,13 +114,14 @@ def send_to_all_clients(sender_addr):
                         send_fragment(fragment, client)
                         fragment_payload = fragment_payload[frag_size:]
                         fragment_index += 1
-                    print(f"Mensagem enviada para {client}\n")
+                    #print(f"Mensagem enviada para {client}\n")
         os.remove('message_server.txt')
 
 def send_fragment(fragment, addr):
     ack_event = threading.Event()
     ack_received = False
-
+    print(f"\nMensagem enviada para {addr}\n")
+    
     def receive_ack():
         nonlocal ack_received
         while not ack_event.is_set():
@@ -132,7 +132,7 @@ def send_fragment(fragment, addr):
                 if message_type == 1:  # ACK
                     ack_received = True
                     ack_event.set()
-                    print(f'ACK recebido de {address}')
+                    print(f'<-------------- ACK recebido de {address}')
             except socket.timeout:
                 continue
 
@@ -152,10 +152,10 @@ def send_fragment(fragment, addr):
 def receive():
     while True:
         data, addr = server.recvfrom(1024)
-        print("Mensagem recebida")
+        print("\n-----------------------Mensagem recebida-----------------------\n")
         if addr not in clients:
             clients.append(addr)
-            print(f"Lista de Clientes: {clients}")
+            print(f"Lista de clientes atualizada: {clients}")
         header = data[:16]
         message_type = struct.unpack('!I', header[:4])[0]
 
