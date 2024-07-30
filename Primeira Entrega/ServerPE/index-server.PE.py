@@ -11,48 +11,28 @@ clients = []
 messages = queue.Queue()
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server.bind(('localhost', 7777))
+
 # Armazenamento de fragmentos recebidos
 frags_received_list = []
 frags_received_count = 0
 
-
-#Função que faz o calculo do Checksum (não o CRC)
-def calcula_checksum(data):
-    checksum = 0
-    for byte in data:
-        checksum = (checksum + byte) & 0xFF #Serve para manter o checksum no intervalo de 1 byte, essa operação "& 0xFF" se a soma de checksum e byte resultar em um valor que excede 8 bits, a operação & 0xFF descarta todos os bits acima do oitavo bit. Isso mantém o checksum dentro do intervalo de 0 a 255 (8 bits).
-    return checksum
-
-
 #Função que cria fragmentos
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
-    checksum = calcula_checksum(data)
-
-    print(
-        f"Criando fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}")  # Verificação de fragmento
-
-    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, checksum)
+    crc = crc32(data)
+    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, crc)
     return header + data
 
 # Verificação da Integridade dos dados recebidos por meio de desempacotamento e reagrupação
 def unpack_and_reassemble(data, addr):
     global frags_received_count, frags_received_list
-
     header = data[:16]
     message_in_bytes = data[16:]
-    frag_size, frag_index, frags_numb, checksum = struct.unpack('!IIII', header)
-
-    # Verificar o Checksum
-    checksum_calculado = calcula_checksum(message_in_bytes)
-    if checksum != checksum_calculado:
-        print(
-            f"Fragmento com checksum clássico inválido, ignorando.\nEsperado: {checksum},\nCalculado: {checksum_calculado}")
+    frag_size, frag_index, frags_numb, crc = struct.unpack('!IIII', header)
+    # Verificar CRC
+    if crc != crc32(message_in_bytes):
+        print("Fragmento com CRC inválido, ignorando.")
         return
-
-    print(
-        f"\nRecebido fragmento: Tamanho={frag_size}, Índice={frag_index}, Total Fragmentos={frags_numb}, Checksum={checksum}\n")
-
     if len(frags_received_list) < frags_numb:
         add = frags_numb - len(frags_received_list)
         frags_received_list.extend([None] * add)
@@ -69,6 +49,7 @@ def unpack_and_reassemble(data, addr):
         print("Provavelmente houve perda de pacotes")
         frags_received_count = 0
         frags_received_list = []
+
 #Processa a mensagem e a trata caso seja uma confirmação de Login, Log out ou apenas uma mensagem qualquer.
 def process_received_message(addr):
     with open('received_message.txt', 'r') as file:
@@ -92,6 +73,7 @@ def process_received_message(addr):
             messages.put(line)
             print(f"Mensagem recebida de {addr} processada.")
     send_to_all_clients(addr)
+
 # Faz o broadcast da mensagem para os clientes
 def send_to_all_clients(sender_addr):
     frag_index = 0
@@ -114,6 +96,7 @@ def send_to_all_clients(sender_addr):
                         fragment_index += 1
                     print(f"Mensagem enviada para {client}\n") 
         os.remove('message_server.txt')
+
 # Função de receber dados
 def receive():
     while True:
@@ -123,5 +106,7 @@ def receive():
             clients.append(addr)
             print(f"Lista de Clientes: {clients}")
         unpack_and_reassemble(data, addr)
+
+
 thread = threading.Thread(target=receive)
 thread.start()

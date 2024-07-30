@@ -10,28 +10,22 @@ import struct
 # Configuração do Cliente 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 client.bind(("localhost", random.randint(8000, 9000)))
+
 # Armazenamento de fragmentos recebidos
 frags_received_list = []
 frags_received_count = 0
-def calcula_checksum(data):
-    checksum = 0
-    for byte in data:
-        checksum = (checksum + byte) & 0xFF
-    return checksum
 
 # Verificação da Integridade dos dados recebidos por meio de desempacotamento e reagrupação 
+
 def unpack_and_reassemble(data):
     global frags_received_count, frags_received_list
-
-    header = data[:16]
-    message_in_bytes = data[16:]
-    frag_size, frag_index, frags_numb, checksum = struct.unpack('!IIII', header)
-
-    # Verifica Checksum
-    if checksum != calcula_checksum(message_in_bytes):
-        print("Fragmento com checksum inválido, ignorando.")
+    header = data[:16] 
+    message_in_bytes = data[16:] 
+    frag_size, frag_index, frags_numb, crc = struct.unpack('!IIII', header) 
+    # Verifica CRC
+    if crc != crc32(message_in_bytes): # ----------------> Essa função calcula o CRC32 da mensagem e cerifica se possui o mesmo valor do informado pelo cabeçalho
+        print("Fragmento com CRC inválido, ignorando.")
         return
-
     if len(frags_received_list) < frags_numb: 
         add = frags_numb - len(frags_received_list)
         frags_received_list.extend([None] * add)
@@ -49,12 +43,13 @@ def unpack_and_reassemble(data):
         print("Provavelmente houve perda de pacotes")
         frags_received_count = 0
         frags_received_list = []
+
 #Lê o arquivo txt e printa a mensagem
 def print_received_message():
     with open('received_message.txt', 'r') as file:
         file_content = file.read()
-    os.remove('received_message.txt')
     print(file_content)
+
 #Função que trata o recebimento da mensagem
 def receive():
     while True:
@@ -62,13 +57,13 @@ def receive():
         unpack_and_reassemble(data) 
 thread1 = threading.Thread(target=receive)
 thread1.start()
+
 #Cria um Fragmento
 def create_fragment(payload, frag_size, frag_index, frags_numb):
     data = payload[:frag_size]
-    checksum = calcula_checksum(data)
-    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, checksum)
+    crc = crc32(data)
+    header = struct.pack('!IIII', frag_size, frag_index, frags_numb, crc)
     return header + data
-
 
 def main():
     username = ''
@@ -83,7 +78,7 @@ def main():
                 file.write(sent_msg)
             send_txt()
             print(f"Usuario {username}, você está conectado.")
-        
+
         #Trata a saida do usuario
         elif username and message == "bye":
             sent_msg = f"SIGNOUT_TAG:{username}"
@@ -92,6 +87,7 @@ def main():
             send_txt()
             print("Conexão encerrada, Até logo!")
             exit() #Encerra a conexão
+
         #Trata a mensagem do usuario
         else:
             if username:
@@ -102,6 +98,7 @@ def main():
                 send_txt()
             else:
                 print("Para conectar a sala digite 'hi, meu nome eh' e digite seu username")
+
 #Função que manda a mensagem
 def send_txt():
     frag_index = 0
