@@ -20,6 +20,10 @@ Este é um projeto da disciplina Redes de Computadores, realizado pelos alunos d
 
 Neste projeto, cada equipe desenvolverá um servidor de chat de sala única, onde os clientes se conectam à sala e recebem todas as mensagens dos outros usuários, além de também poderem enviar mensagens. Entretanto, essas mensagens não são strings como o convencional, mas, a fim de haver transferência de arquivos e segmentação dos mesmos, serão arquivos .txt que sendo lidos pelo servidor deverão ser impressos no terminal como mensagens.
 
+## Modo de utilização
+
+Baixe o arquivo zip e certifique-se de possuir todas as bibliotecas instaladas. Após isso, inicialize o servidor E o(s) Cliente(s) e converse! 
+
 1. Primeira Etapa: Transmissão de arquivos com UDP
 
 - Implementação de comunicação UDP utilizando a biblioteca Socket na linguagem Python, com troca de arquivos em formato de texto (.txt) em pacotes de até 1024 bytes (buffer_size) em um chat de sala única, ou seja, apesar da troca inicial entre os usuários ser em arquivos .txt, elas devem ser exibidas em linha de comando no terminal de cada um dos clientes conectados à sala.
