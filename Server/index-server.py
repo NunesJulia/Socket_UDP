@@ -1,4 +1,3 @@
-#
 import socket
 import os
 import queue
@@ -19,7 +18,6 @@ frags_received_count = 0
 
 # Variável relacionada ao RDT 3.0
 timeout = 2  # Timeout de 2 segundos
-ack_received_flag = False
 
 # Função que faz o cálculo do Checksum
 def calcula_checksum(data):
@@ -100,7 +98,6 @@ def process_received_message(addr):
 
 # Faz o broadcast da mensagem para os clientes
 def send_to_all_clients(sender_addr):
-    frag_index = 0
     frag_size = 1008
     while not messages.empty():
         message = messages.get()
@@ -122,19 +119,37 @@ def send_to_all_clients(sender_addr):
         os.remove('message_server.txt')
 
 def send_fragment(fragment, addr):
-    global ack_received_flag
-    ack_received_flag = False
-    # Loop de ACK
-    while not ack_received_flag:  # Enquanto a função "ACK Received" não transformar a flag em True, reenvia a mensagem
+    ack_event = threading.Event()
+    ack_received = False
+
+    def receive_ack():
+        nonlocal ack_received
+        while not ack_event.is_set():
+            try:
+                data, address = server.recvfrom(1024)
+                header = data[:16]
+                message_type = struct.unpack('!I', header[:4])[0]
+                if message_type == 1:  # ACK
+                    ack_received = True
+                    ack_event.set()
+                    print(f'ACK recebido de {address}')
+            except socket.timeout:
+                continue
+
+    # Configurar timeout e thread para receber ACK
+    server.settimeout(timeout)
+    ack_thread = threading.Thread(target=receive_ack)
+    ack_thread.start()
+
+    while not ack_event.is_set():  # Enquanto não receber ACK, reenvia a mensagem
         server.sendto(fragment, addr)
-        start = time.time()
-        while time.time() - start < timeout:
-            if ack_received_flag:
-                break
+        ack_event.wait(timeout)  # Espera até o timeout ou receber o ACK
+
+    ack_thread.join()  # Garante que a thread de ACK finalize
+    server.settimeout(None)  # Remove o timeout
 
 # Função de receber dados
 def receive():
-    global ack_received_flag
     while True:
         data, addr = server.recvfrom(1024)
         print("Mensagem recebida")
@@ -144,10 +159,9 @@ def receive():
         header = data[:16]
         message_type = struct.unpack('!I', header[:4])[0]
 
-        # Se a mensagem recebida for um ACK, altera a flag de ACK para True
-        if message_type == 1:  # ACK
-            ack_received_flag = True
-            print('ACK recebido')
+        # Se a mensagem recebida for um ACK, não faz nada (será tratado em outra parte)
+        if message_type == 1:
+            continue
         # Se a mensagem recebida NÃO for um ACK: Trata a mensagem
         else:
             unpack_and_reassemble(data, addr)

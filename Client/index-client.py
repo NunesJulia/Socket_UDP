@@ -78,7 +78,7 @@ def print_received_message():
 def send_ack():
     ack_packet = struct.pack('!I', 1)
     client.sendto(ack_packet, ('localhost', 7777))
-    print('ACK enviado')
+
 
 # Função que trata o recebimento da mensagem
 def receive():
@@ -91,7 +91,6 @@ def receive():
         # Se a mensagem recebida for um ACK, altera a flag de ACK para True
         if message_type == 1:  # ACK
             ack_received_flag = True
-            print('ACK recebido')
         # Se a mensagem recebida NÃO for um ACK: Trata a mensagem
         else:
             unpack_and_reassemble(data)
